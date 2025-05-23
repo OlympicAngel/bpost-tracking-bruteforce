@@ -3,9 +3,15 @@
 ## Requirements:
 Tested on Python 3.13
 
+## Installation:
+```
+git clone https://github.com/dbnewman/bpost-tracking-bruteforce.git
+cd bpost-tracking-bruteforce
+pip install -r requirements.txt
+```
+
 ## Usage:
 ```
-pip install -r requirements.txt
 python find_order.py
 ```
 
