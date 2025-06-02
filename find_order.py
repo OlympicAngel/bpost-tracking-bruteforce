@@ -5,13 +5,6 @@ import json
 import re
 import urllib.parse
 
-# For Windows console to support UTF-8 properly (optional)
-if sys.platform == "win32":
-    import os
-    os.system('chcp 65001')
-
-# Default config and other code as before...
-
 prefix_start = 1200
 prefix_end = 1500
 concurrency = 15
@@ -21,24 +14,25 @@ base_path = "/track/items"
 found_event = asyncio.Event()
 
 def get_int_input(prompt, default):
-    user_input = input(f"{prompt} (ברירת מחדל: {default}): ").strip()
+    user_input = input(f"{prompt} (default: {default}): ").strip()
     if not user_input:
         return default
     try:
         return int(user_input)
     except ValueError:
-        print("קלט לא תקין - משתמש בערכים ברירת מחדל.")
+        print("Invalid input, uses default values")
         return default
 
 # Now Hebrew input prompts example:
 
-is_global = input("האם זה חבילה של הגלובל ג'רני? (כן/לא): ").strip().lower()
+is_global = input("Is this a global journey order? (yes/no): ").strip().lower()
 if is_global in ("כן", "y", "yes"):
-    print("מצטערים, גלובל ג'רני לא נתמך.")
+    print("Sorry, Global journey orders are not supported.")
+    input()
     sys.exit(0)
 
-order_id = input("הכנס מספר הזמנה (מופיע ב https://my.tomorrowland.com/orders): ").strip()
-postcode = input("הכנס מיקוד של הקונה הראשי: ").strip()
+order_id = input("Enter the order ID (can be seen at https://my.tomorrowland.com/orders): ").strip()
+postcode = input("Enter the postcode: (of the main buyer) ").strip()
 
 def extract_barcode(response_json: dict) -> str | None:
     try:
@@ -71,15 +65,14 @@ async def is_interesting_response(prefix: int, status: int, body: str):
         return False
     try:
         json_data = json.loads(body)
-        if json_data.get("error") == "לא נמצא":
+        if json_data.get("error") == "NO_DATA_FOUND":
             return False
         barcode = extract_barcode(json_data)
         if barcode:
             print(
-                f"\n[החבילה נמצאה!] מספר הזמנה: {prefix}-{order_id}\n"
-                f"         ברקוד: {barcode}\n"
-                f"         כתובת מעקב: https://track.bpost.cloud/btr/web/#/search?itemCode={barcode}&lang=en&postalCode={postcode}\n"
-                f"         יש לשמור את הקישור כדי לעקוב על ההזמנה בעתיד\n"
+                f"\n[VALID] Order ID: {prefix}-{order_id}\n"
+                f"        Barcode: {barcode}\n"
+                f"        Tracking URL: https://track.bpost.cloud/btr/web/#/search?itemCode={barcode}&lang=en&postalCode={postcode}\n"
             )
             return True
     except Exception:
@@ -97,12 +90,12 @@ async def try_prefix(prefix: int):
     loop = asyncio.get_running_loop()
     status, body = await loop.run_in_executor(None, sync_http_get, params)
     if status == 0:
-        print(f"[שגיאה] {item_id}: {body}")
+        print(f"[error] {item_id}: {body}")
         return
     if await is_interesting_response(prefix, status, body):
         found_event.set()
     else:
-        print(f"[אין נתונים] {item_id}")
+        print(f"[no data] {item_id}")
 
 async def main():
     for chunk_start in range(prefix_start, prefix_end, concurrency):
@@ -115,4 +108,4 @@ async def main():
             break
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(main())    
