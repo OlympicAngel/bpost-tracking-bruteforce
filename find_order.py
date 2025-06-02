@@ -1,42 +1,46 @@
-import asyncio
-import httpx
 import sys
+import asyncio
+import http.client
+import json
 import re
+import urllib.parse
 
-# Default configuration values
-default_prefix_start = 1200
-default_prefix_end = 1500
-default_concurrency = 25
-base_url = "https://track.bpost.cloud/track/items"
+# For Windows console to support UTF-8 properly (optional)
+if sys.platform == "win32":
+    import os
+    os.system('chcp 65001')
 
-# Global signal to stop when a valid result is found
+# Default config and other code as before...
+
+prefix_start = 1200
+prefix_end = 1500
+concurrency = 15
+base_host = "track.bpost.cloud"
+base_path = "/track/items"
+
 found_event = asyncio.Event()
 
 def get_int_input(prompt, default):
-    user_input = input(f"{prompt} (default: {default}): ").strip()
+    user_input = input(f"{prompt} (ברירת מחדל: {default}): ").strip()
     if not user_input:
         return default
     try:
         return int(user_input)
     except ValueError:
-        print("Invalid input, using default.")
+        print("קלט לא תקין - משתמש בערכים ברירת מחדל.")
         return default
 
-# Ask if global journey order
-is_global = input("Is this a global journey order? (yes/no): ").strip().lower()
-if is_global in ("yes", "y"):
-    print("Sorry, Global journey orders are not supported.")
+# Now Hebrew input prompts example:
+
+is_global = input("האם זה חבילה של הגלובל ג'רני? (כן/לא): ").strip().lower()
+if is_global in ("כן", "y", "yes"):
+    print("מצטערים, גלובל ג'רני לא נתמך.")
     sys.exit(0)
 
-# Prompt for user inputs
-order_id = input("Enter the order ID: ").strip()
-postcode = input("Enter the postcode: ").strip()
-prefix_start = get_int_input("Enter prefix start", default_prefix_start)
-prefix_end = get_int_input("Enter prefix end", default_prefix_end)
-concurrency = get_int_input("Enter concurrency level", default_concurrency)
+order_id = input("הכנס מספר הזמנה (מופיע ב https://my.tomorrowland.com/orders): ").strip()
+postcode = input("הכנס מיקוד של הקונה הראשי: ").strip()
 
-# Extract barcode from JSON
-def extract_barcode(response_json: dict) -> str:
+def extract_barcode(response_json: dict) -> str | None:
     try:
         items = response_json.get("items", [])
         if items:
@@ -47,27 +51,42 @@ def extract_barcode(response_json: dict) -> str:
         pass
     return None
 
-# Check if the response is interesting
-async def is_interesting_response(prefix: int, response: httpx.Response):
+def sync_http_get(params: dict) -> tuple[int, str]:
+    query_string = urllib.parse.urlencode(params)
+    path = base_path + "?" + query_string
+
+    conn = http.client.HTTPSConnection(base_host, timeout=10)
     try:
-        json_data = response.json()
-        if json_data.get("error") == "NO_DATA_FOUND":
+        conn.request("GET", path)
+        response = conn.getresponse()
+        body = response.read().decode()
+        return response.status, body
+    except Exception as e:
+        return 0, str(e)
+    finally:
+        conn.close()
+
+async def is_interesting_response(prefix: int, status: int, body: str):
+    if status != 200:
+        return False
+    try:
+        json_data = json.loads(body)
+        if json_data.get("error") == "לא נמצא":
             return False
         barcode = extract_barcode(json_data)
         if barcode:
             print(
-                f"\n[VALID] Order ID: {prefix}-{order_id}\n"
-                f"        Postcode: {postcode}\n"
-                f"        Barcode: {barcode}\n"
-                f"        Tracking URL: https://track.bpost.cloud/btr/web/#/search?itemCode={barcode}&lang=en&postalCode={postcode}\n"
+                f"\n[החבילה נמצאה!] מספר הזמנה: {prefix}-{order_id}\n"
+                f"         ברקוד: {barcode}\n"
+                f"         כתובת מעקב: https://track.bpost.cloud/btr/web/#/search?itemCode={barcode}&lang=en&postalCode={postcode}\n"
+                f"         יש לשמור את הקישור כדי לעקוב על ההזמנה בעתיד\n"
             )
             return True
     except Exception:
         pass
     return False
 
-# Attempt request
-async def try_prefix(client: httpx.AsyncClient, prefix: int):
+async def try_prefix(prefix: int):
     if found_event.is_set():
         return
     item_id = f"{prefix}-{order_id}"
@@ -75,27 +94,25 @@ async def try_prefix(client: httpx.AsyncClient, prefix: int):
         "itemIdentifier": item_id,
         "postalCode": postcode
     }
-    try:
-        response = await client.get(base_url, params=params, timeout=10)
-        if await is_interesting_response(prefix, response):
-            found_event.set()
-        else:
-            print(f"[NO DATA] {item_id}")
-    except httpx.RequestError as e:
-        print(f"[ERROR] {item_id}: {e}")
+    loop = asyncio.get_running_loop()
+    status, body = await loop.run_in_executor(None, sync_http_get, params)
+    if status == 0:
+        print(f"[שגיאה] {item_id}: {body}")
+        return
+    if await is_interesting_response(prefix, status, body):
+        found_event.set()
+    else:
+        print(f"[אין נתונים] {item_id}")
 
-# Main runner
 async def main():
-    async with httpx.AsyncClient() as client:
-        for chunk_start in range(prefix_start, prefix_end, concurrency):
-            tasks = [
-                try_prefix(client, prefix)
-                for prefix in range(chunk_start, min(chunk_start + concurrency, prefix_end))
-            ]
-            await asyncio.gather(*tasks)
-            if found_event.is_set():
-                break
+    for chunk_start in range(prefix_start, prefix_end, concurrency):
+        tasks = [
+            try_prefix(prefix)
+            for prefix in range(chunk_start, min(chunk_start + concurrency, prefix_end))
+        ]
+        await asyncio.gather(*tasks)
+        if found_event.is_set():
+            break
 
-# Entry point
 if __name__ == "__main__":
     asyncio.run(main())
