@@ -6,7 +6,7 @@
 
 ## התקנה והפעלה(CLI):
 ```
-git clone https://github.com/dbnewman/bpost-tracking-bruteforce.git
+git clone https://github.com/OlympicAngel/bpost-tracking-bruteforce.git
 cd bpost-tracking-bruteforce
 python find_order.py
 ```
