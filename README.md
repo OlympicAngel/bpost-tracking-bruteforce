@@ -1,20 +1,19 @@
 # סקריפט למציאת קישור מעקב ל Tomorrowland
 
-## דרישות:
+### דרישות:
 נבדק על Python 3.13
 קישור התקנה לפייתון - https://www.python.org/downloads/ אם אין לכם במחשב
 
-## התקנה:
+## התקנה והפעלה(CLI):
 ```
 git clone https://github.com/dbnewman/bpost-tracking-bruteforce.git
 cd bpost-tracking-bruteforce
-```
-
-## שימוש:
-```
 python find_order.py
 ```
-ולעקוב אחרי הוראות
+ולעקוב אחרי הוראות.
+
+---
+---
 
 ## התקנה והפעלה למי שפחות מבין:
 1. הורדו את הסקריפט דרך הקישור https://github.com/OlympicAngel/bpost-tracking-bruteforce/archive/refs/heads/main.zip
